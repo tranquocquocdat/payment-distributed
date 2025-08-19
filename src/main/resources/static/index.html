@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distributed Payment System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.0/axios.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #4a5568;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #4a5568;
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .account-balance {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #48bb78;
+        }
+
+        .balance-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .balance-label {
+            font-size: 0.9rem;
+            color: #718096;
+            margin-bottom: 2px;
+        }
+
+        .balance-amount {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .refresh-btn {
+            background: #48bb78;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .transaction-history {
+            grid-column: 1 / -1;
+        }
+
+        .transaction-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+
+        .transaction-item:hover {
+            background: #e2e8f0;
+            transform: translateX(5px);
+        }
+
+        .transaction-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .transaction-id {
+            font-family: 'Courier New', monospace;
+            background: #667eea;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .transaction-amount {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .transaction-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .detail-label {
+            color: #718096;
+            font-weight: 500;
+        }
+
+        .detail-value {
+            color: #2d3748;
+            font-weight: 600;
+        }
+
+        .transaction-flow {
+            margin-top: 15px;
+        }
+
+        .flow-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #4a5568;
+        }
+
+        .flow-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .flow-step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            flex: 1;
+        }
+
+        .flow-step:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 20px;
+            right: -50%;
+            width: 100%;
+            height: 2px;
+            background: #e2e8f0;
+            z-index: 1;
+        }
+
+        .flow-step.completed:not(:last-child)::after {
+            background: #48bb78;
+        }
+
+        .step-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: #718096;
+            position: relative;
+            z-index: 2;
+            transition: all 0.3s ease;
+        }
+
+        .step-circle.completed {
+            background: #48bb78;
+            color: white;
+        }
+
+        .step-circle.current {
+            background: #667eea;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        .step-circle.failed {
+            background: #f56565;
+            color: white;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .step-label {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            text-align: center;
+            color: #718096;
+            font-weight: 500;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-accepted { background: #bee3f8; color: #2c5282; }
+        .status-requested { background: #feebc8; color: #c05621; }
+        .status-held { background: #e9d8fd; color: #553c9a; }
+        .status-credited { background: #c6f6d5; color: #22543d; }
+        .status-committed { background: #c6f6d5; color: #22543d; }
+        .status-rejected { background: #fed7d7; color: #c53030; }
+        .status-cancelled { background: #fed7d7; color: #c53030; }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e2e8f0;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .alert-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border-left: 4px solid #48bb78;
+        }
+
+        .alert-error {
+            background: #fed7d7;
+            color: #c53030;
+            border-left: 4px solid #f56565;
+        }
+
+        .quick-amounts {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .quick-amount {
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .quick-amount:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .flow-steps {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .flow-step:not(:last-child)::after {
+                display: none;
+            }
+
+            .transaction-details {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>🏦 Distributed Payment System</h1>
+        <p>Real-time money transfer with 7-step transaction flow</p>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" id="totalTransactions">0</div>
+            <div class="stat-label">Total Transactions</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="successfulTransactions">0</div>
+            <div class="stat-label">Successful</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="pendingTransactions">0</div>
+            <div class="stat-label">Pending</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="totalVolume">$0</div>
+            <div class="stat-label">Total Volume</div>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <!-- Account Balances -->
+        <div class="card">
+            <h2 class="card-title">💰 Account Balances</h2>
+            <div id="accountBalances">
+                <!-- Account balances will be loaded here -->
+            </div>
+            <button class="refresh-btn" onclick="loadAccountBalances()">Refresh Balances</button>
+        </div>
+
+        <!-- Transfer Form -->
+        <div class="card">
+            <h2 class="card-title">💸 New Transfer</h2>
+            <div id="transferAlert"></div>
+            <form id="transferForm">
+                <div class="form-group">
+                    <label for="sourceAccount">From Account</label>
+                    <select id="sourceAccount" required>
+                        <option value="">Select source account</option>
+                        <option value="ACC001">ACC001 - Nguyen Van A</option>
+                        <option value="ACC003">ACC003 - Tran Thi C</option>
+                        <option value="ACC004">ACC004 - Pham Van D</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="destinationAccount">To Account</label>
+                    <select id="destinationAccount" required>
+                        <option value="">Select destination account</option>
+                        <option value="ACC001">ACC001 - Nguyen Van A</option>
+                        <option value="ACC002">ACC002 - Le Van B</option>
+                        <option value="ACC003">ACC003 - Tran Thi C</option>
+                        <option value="ACC004">ACC004 - Pham Van D</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="amount">Amount (VND)</label>
+                    <div class="quick-amounts">
+                        <div class="quick-amount" onclick="setAmount(100000)">100,000</div>
+                        <div class="quick-amount" onclick="setAmount(500000)">500,000</div>
+                        <div class="quick-amount" onclick="setAmount(1000000)">1,000,000</div>
+                    </div>
+                    <input type="number" id="amount" step="0.01" min="0.01" placeholder="Enter amount" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <textarea id="description" rows="3" placeholder="Optional description"></textarea>
+                </div>
+
+                <button type="submit" class="btn" id="submitBtn">
+                    <span id="submitText">Send Money</span>
+                    <div class="loading" id="submitLoading">
+                        <div class="spinner"></div>
+                        Processing...
+                    </div>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Transaction History -->
+    <div class="card transaction-history">
+        <h2 class="card-title">📊 Transaction History & Real-time Flow</h2>
+        <div id="transactionList">
+            <!-- Transactions will be loaded here -->
+        </div>
+    </div>
+</div>
+
+<script>
+        // Configuration
+        const API_BASE = 'http://localhost:8081/api/v1';
+        let transactions = [];
+        let refreshInterval;
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            loadAccountBalances();
+            loadTransactionHistory();
+
+            // Auto-refresh every 3 seconds
+            refreshInterval = setInterval(() => {
+                loadAccountBalances();
+                refreshTransactionStatuses();
+            }, 3000);
+
+            // Setup form submission
+            document.getElementById('transferForm').addEventListener('submit', handleTransferSubmit);
+        });
+
+        // Load account balances
+        async function loadAccountBalances() {
+            const accounts = ['ACC001', 'ACC002', 'ACC003', 'ACC004'];
+            const balancesContainer = document.getElementById('accountBalances');
+
+            balancesContainer.innerHTML = '<div class="loading"><div class="spinner"></div>Loading balances...</div>';
+
+            try {
+                const balancePromises = accounts.map(account =>
+                    axios.get(`${API_BASE}/payments/accounts/${account}/balance`)
+                        .catch(() => ({ data: { accountId: account, book: 0, available: 0, openHold: 0 } }))
+                );
+
+                const balances = await Promise.all(balancePromises);
+
+                balancesContainer.innerHTML = balances.map(response => {
+                    const balance = response.data;
+                    return `
+                        <div class="account-balance">
+                            <div class="balance-info">
+                                <div class="balance-label">${balance.accountId}</div>
+                                <div class="balance-amount">
+                                    Book: ${formatMoney(balance.book)} |
+                                    Available: ${formatMoney(balance.available)} |
+                                    Hold: ${formatMoney(balance.openHold)}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                balancesContainer.innerHTML = '<div class="alert alert-error">Error loading balances</div>';
+                console.error('Error loading balances:', error);
+            }
+        }
+
+        // Handle transfer form submission
+        async function handleTransferSubmit(event) {
+            event.preventDefault();
+
+            const submitBtn = document.getElementById('submitBtn');
+            const submitText = document.getElementById('submitText');
+            const submitLoading = document.getElementById('submitLoading');
+            const alertContainer = document.getElementById('transferAlert');
+
+            // Disable form and show loading
+            submitBtn.disabled = true;
+            submitText.style.display = 'none';
+            submitLoading.style.display = 'block';
+            alertContainer.innerHTML = '';
+
+            try {
+                const formData = {
+                    sourceAccount: document.getElementById('sourceAccount').value,
+                    destinationAccount: document.getElementById('destinationAccount').value,
+                    amount: parseFloat(document.getElementById('amount').value),
+                    description: document.getElementById('description').value,
+                    idempotencyKey: generateIdempotencyKey()
+                };
+
+                // Validate form
+                if (formData.sourceAccount === formData.destinationAccount) {
+                    throw new Error('Source and destination accounts cannot be the same');
+                }
+
+                const response = await axios.post(`${API_BASE}/payments/transfer`, formData);
+
+                if (response.data.status === 'ACCEPTED') {
+                    alertContainer.innerHTML = `
+                        <div class="alert alert-success">
+                            ✅ Transfer initiated successfully!<br>
+                            Transaction ID: <strong>${response.data.txId}</strong>
+                        </div>
+                    `;
+
+                    // Reset form
+                    document.getElementById('transferForm').reset();
+
+                    // Add transaction to monitoring
+                    const newTransaction = {
+                        txId: response.data.txId,
+                        sourceAccount: formData.sourceAccount,
+                        destinationAccount: formData.destinationAccount,
+                        amount: formData.amount,
+                        description: formData.description,
+                        status: 'REQUESTED',
+                        createdAt: Date.now(),
+                        updatedAt: Date.now()
+                    };
+
+                    transactions.unshift(newTransaction);
+                    renderTransactionHistory();
+                    updateStats();
+
+                } else {
+                    throw new Error(response.data.message || 'Transfer rejected');
+                }
+
+            } catch (error) {
+                console.error('Transfer error:', error);
+                alertContainer.innerHTML = `
+                    <div class="alert alert-error">
+                        ❌ Error: ${error.response?.data?.message || error.message}
+                    </div>
+                `;
+            } finally {
+                // Re-enable form
+                submitBtn.disabled = false;
+                submitText.style.display = 'inline';
+                submitLoading.style.display = 'none';
+            }
+        }
+
+        // Load transaction history
+        async function loadTransactionHistory() {
+            // Since the API doesn't have a history endpoint, we'll use the stored transactions
+            renderTransactionHistory();
+        }
+
+        // Refresh transaction statuses
+        async function refreshTransactionStatuses() {
+            for (let transaction of transactions) {
+                if (transaction.status !== 'COMMITTED' && transaction.status !== 'REJECTED' && transaction.status !== 'CANCELLED') {
+                    try {
+                        const response = await axios.get(`${API_BASE}/payments/transactions/${transaction.txId}/status`);
+                        if (response.data) {
+                            transaction.status = response.data.status;
+                            transaction.updatedAt = response.data.updatedAt * 1000; // Convert to milliseconds
+                            transaction.errorMessage = response.data.errorMessage;
+                        }
+                    } catch (error) {
+                        console.warn(`Failed to get status for transaction ${transaction.txId}`);
+                    }
+                }
+            }
+            renderTransactionHistory();
+            updateStats();
+        }
+
+        // Render transaction history
+        function renderTransactionHistory() {
+            const container = document.getElementById('transactionList');
+
+            if (transactions.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #718096;">
+                        <div style="font-size: 3rem; margin-bottom: 10px;">💳</div>
+                        <div>No transactions yet. Start by sending money above!</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = transactions.map(tx => {
+                const flowSteps = getTransactionFlowSteps(tx.status);
+                return `
+                    <div class="transaction-item">
+                        <div class="transaction-header">
+                            <span class="transaction-id">${tx.txId}</span>
+                            <span class="transaction-amount">${formatMoney(tx.amount)}</span>
+                        </div>
+
+                        <div class="transaction-details">
+                            <div class="detail-item">
+                                <span class="detail-label">From:</span>
+                                <span class="detail-value">${tx.sourceAccount}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">To:</span>
+                                <span class="detail-value">${tx.destinationAccount}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Status:</span>
+                                <span class="status-badge status-${tx.status.toLowerCase()}">${tx.status}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Time:</span>
+                                <span class="detail-value">${new Date(tx.createdAt).toLocaleString()}</span>
+                            </div>
+                        </div>
+
+                        ${tx.description ? `<div style="margin-bottom: 15px; color: #718096; font-style: italic;">"${tx.description}"</div>` : ''}
+
+                        ${tx.errorMessage ? `<div class="alert alert-error" style="margin-bottom: 15px;">${tx.errorMessage}</div>` : ''}
+
+                        <div class="transaction-flow">
+                            <div class="flow-title">7-Step Transaction Flow:</div>
+                            <div class="flow-steps">
+                                ${flowSteps.map((step, index) => `
+                                    <div class="flow-step ${step.status}">
+                                        <div class="step-circle ${step.status}">
+                                            ${step.status === 'completed' ? '✓' :
+                                              step.status === 'failed' ? '✗' :
+                                              step.status === 'current' ? '⋯' : index + 1}
+                                        </div>
+                                        <div class="step-label">${step.label}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Get transaction flow steps based on status
+        function getTransactionFlowSteps(status) {
+            const steps = [
+                { label: 'INGRESS', status: 'completed' },
+                { label: 'OUTBOX', status: 'completed' },
+                { label: 'HOLD', status: '' },
+                { label: 'CREDIT', status: '' },
+                { label: 'COMMIT', status: '' },
+                { label: 'PROJECTION', status: '' },
+                { label: 'RECONCILE', status: '' }
+            ];
+
+            switch (status) {
+                case 'REQUESTED':
+                    steps[2].status = 'current';
+                    break;
+                case 'HELD':
+                    steps[2].status = 'completed';
+                    steps[3].status = 'current';
+                    break;
+                case 'CREDITED':
+                    steps[2].status = 'completed';
+                    steps[3].status = 'completed';
+                    steps[4].status = 'current';
+                    break;
+                case 'COMMITTED':
+                    steps.forEach((step, index) => {
+                        if (index < 6) step.status = 'completed';
+                    });
+                    steps[6].status = 'current';
+                    break;
+                case 'REJECTED':
+                case 'CANCELLED':
+                    steps.forEach(step => {
+                        if (!step.status) step.status = 'failed';
+                    });
+                    break;
+            }
+
+            return steps;
+        }
+
+        // Update statistics
+        function updateStats() {
+            const total = transactions.length;
+            const successful = transactions.filter(tx => tx.status === 'COMMITTED').length;
+            const pending = transactions.filter(tx =>
+                !['COMMITTED', 'REJECTED', 'CANCELLED'].includes(tx.status)
+            ).length;
+            const volume = transactions
+                .filter(tx => tx.status === 'COMMITTED')
+                .reduce((sum, tx) => sum + tx.amount, 0);
+
+            document.getElementById('totalTransactions').textContent = total;
+            document.getElementById('successfulTransactions').textContent = successful;
+            document.getElementById('pendingTransactions').textContent = pending;
+            document.getElementById('totalVolume').textContent = formatMoney(volume);
+        }
+
+        // Utility functions
+        function formatMoney(amount) {
+            return new Intl.NumberFormat('vi-VN', {
+                style: 'currency',
+                currency: 'VND'
+            }).format(amount);
+        }
+
+        function setAmount(amount) {
+            document.getElementById('amount').value = amount;
+        }
+
+        function generateIdempotencyKey() {
+            return 'TXN_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biểu đồ Hệ thống Chuyển tiền</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .tab {
+            flex: 1;
+            padding: 15px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
+        }
+        .tab:hover {
+            background: #e9ecef;
+        }
+        .tab.active {
+            background: white;
+            border-bottom-color: #667eea;
+            font-weight: bold;
+        }
+        .content {
+            display: none;
+            padding: 30px;
+        }
+        .content.active {
+            display: block;
+        }
+        .diagram {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            background: #f8f9fa;
+        }
+        .system-arch {
+            display: grid;
+            grid-template-rows: repeat(4, 1fr);
+            gap: 15px;
+            min-height: 500px;
+        }
+        .layer {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            padding: 20px;
+            position: relative;
+        }
+        .client-layer {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            color: white;
+        }
+        .api-layer {
+            background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
+            color: white;
+        }
+        .service-layer {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .worker-layer {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        .shards {
+            display: flex;
+            gap: 10px;
+            justify-content: space-around;
+            width: 100%;
+        }
+        .shard {
+            flex: 1;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+        .workers {
+            display: flex;
+            gap: 10px;
+            justify-content: space-around;
+            width: 100%;
+        }
+        .worker {
+            flex: 1;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            padding: 10px;
+            text-align: center;
+            font-size: 0.9em;
+            backdrop-filter: blur(10px);
+        }
+        .flow-diagram {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .step {
+            display: flex;
+            align-items: center;
+            padding: 20px;
+            border-radius: 10px;
+            background: white;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+        .step:hover {
+            transform: translateY(-5px);
+        }
+        .step-number {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-right: 20px;
+            flex-shrink: 0;
+        }
+        .step-1 .step-number { background: #ff6b6b; }
+        .step-2 .step-number { background: #4ecdc4; }
+        .step-3 .step-number { background: #45b7d1; }
+        .step-4 .step-number { background: #96ceb4; }
+        .step-5 .step-number { background: #feca57; }
+        .step-6 .step-number { background: #ff9ff3; }
+        .step-7 .step-number { background: #54a0ff; }
+        .step-content {
+            flex: 1;
+        }
+        .step-title {
+            font-weight: bold;
+            font-size: 1.1em;
+            margin-bottom: 5px;
+            color: #2c3e50;
+        }
+        .step-desc {
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        .state-diagram {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 30px;
+        }
+        .state {
+            padding: 15px 25px;
+            border-radius: 25px;
+            color: white;
+            font-weight: bold;
+            text-align: center;
+            min-width: 120px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        .state-initial { background: #95a5a6; }
+        .state-requested { background: #3498db; }
+        .state-held { background: #f39c12; }
+        .state-credited { background: #27ae60; }
+        .state-committed { background: #2ecc71; }
+        .state-rejected { background: #e74c3c; }
+        .state-cancelled { background: #c0392b; }
+        .arrow {
+            font-size: 2em;
+            color: #667eea;
+        }
+        .timeline {
+            position: relative;
+            padding: 20px 0;
+        }
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 30px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #667eea;
+        }
+        .timeline-item {
+            position: relative;
+            padding: 15px 0 15px 70px;
+            margin-bottom: 20px;
+        }
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: 21px;
+            top: 20px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #667eea;
+        }
+        .timeline-time {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 0.9em;
+        }
+        .timeline-content {
+            margin-top: 5px;
+            color: #2c3e50;
+        }
+        .schema-table {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .table-header {
+            background: #667eea;
+            color: white;
+            padding: 15px;
+            font-weight: bold;
+        }
+        .table-body {
+            padding: 20px;
+        }
+        .field {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #f8f9fa;
+        }
+        .field:last-child {
+            border-bottom: none;
+        }
+        .field-name {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .field-type {
+            color: #7f8c8d;
+            font-family: 'Courier New', monospace;
+        }
+        .er-diagram {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>🏦 Hệ thống Chuyển tiền Phân tán</h1>
+        <p>Schema Database và Biểu đồ Kiến trúc Chi tiết</p>
+    </div>
+
+    <div class="tabs">
+        <div class="tab active" onclick="showTab('architecture')">🏗️ Kiến trúc Hệ thống</div>
+        <div class="tab" onclick="showTab('flow')">🔄 Luồng Xử lý</div>
+        <div class="tab" onclick="showTab('states')">📊 Trạng thái</div>
+        <div class="tab" onclick="showTab('timeline')">⏰ Timeline</div>
+        <div class="tab" onclick="showTab('database')">🗄️ Database Schema</div>
+    </div>
+
+    <div id="architecture" class="content active">
+        <h2>🏗️ Kiến trúc Tổng thể</h2>
+        <div class="diagram">
+            <div class="system-arch">
+                <div class="layer client-layer">
+                    <div style="text-align: center; width: 100%;">
+                        <h3>CLIENT LAYER</h3>
+                        <div style="display: flex; justify-content: space-around; margin-top: 10px;">
+                            <div>📱 Mobile App</div>
+                            <div>💻 Web App</div>
+                            <div>🏧 ATM</div>
+                            <div>💳 POS</div>
+                            <div>⚙️ Admin</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="layer api-layer">
+                    <div style="text-align: center; width: 100%;">
+                        <h3>API GATEWAY</h3>
+                        <div style="display: flex; justify-content: space-around; margin-top: 10px;">
+                            <div>⚖️ Load Balancer</div>
+                            <div>🚦 Rate Limiter</div>
+                            <div>🔐 Auth Service</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="layer service-layer">
+                    <div style="text-align: center; width: 100%;">
+                        <h3>SERVICE LAYER (SHARDS)</h3>
+                        <div class="shards">
+                            <div class="shard">
+                                <h4>SHARD_001</h4>
+                                <div>ACC001, ACC003...</div>
+                                <div>🔄 Transaction API</div>
+                                <div>🗄️ MySQL DB</div>
+                            </div>
+                            <div class="shard">
+                                <h4>SHARD_002</h4>
+                                <div>ACC002, ACC004...</div>
+                                <div>🔄 Transaction API</div>
+                                <div>🗄️ MySQL DB</div>
+                            </div>
+                            <div class="shard">
+                                <h4>SHARD_00N</h4>
+                                <div>ACC00N, ACC00M...</div>
+                                <div>🔄 Transaction API</div>
+                                <div>🗄️ MySQL DB</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="layer worker-layer">
+                    <div style="text-align: center; width: 100%;">
+                        <h3>WORKER LAYER</h3>
+                        <div class="workers">
+                            <div class="worker">🔒 HOLD<br>Worker</div>
+                            <div class="worker">💰 CREDIT<br>Worker</div>
+                            <div class="worker">✅ COMMIT<br>Worker</div>
+                            <div class="worker">📊 Balance<br>Projector</div>
+                            <div class="worker">🔧 Reconciler</div>
+                            <div class="worker">📡 SSE<br>Notifier</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h3>🚀 Message Bus (Kafka)</h3>
+        <div class="diagram" style="text-align: center; padding: 30px;">
+            <div style="display: flex; justify-content: space-around; align-items: center;">
+                <div style="background: #667eea; color: white; padding: 20px; border-radius: 10px;">
+                    📤 Outbox Relay<br>CDC Processor
+                </div>
+                <div style="font-size: 2em; color: #667eea;">→</div>
+                <div style="background: #f39c12; color: white; padding: 20px; border-radius: 10px;">
+                    🔄 KAFKA<br>Message Bus
+                </div>
+                <div style="font-size: 2em; color: #667eea;">→</div>
+                <div style="background: #27ae60; color: white; padding: 20px; border-radius: 10px;">
+                    👷 Workers<br>Event Consumers
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="flow" class="content">
+        <h2>🔄 Luồng Xử lý 7 Bước</h2>
+        <div class="flow-diagram">
+            <div class="step step-1">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <div class="step-title">INGRESS - Tiếp nhận yêu cầu</div>
+                    <div class="step-desc">API nhận request chuyển tiền, ghi idempotency_keys và outbox, trả HTTP 202</div>
+                </div>
+            </div>
+
+            <div class="step step-2">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <div class="step-title">OUTBOX RELAY - Chuyển tiếp sự kiện</div>
+                    <div class="step-desc">CDC đọc outbox, publish "transfer.requested" lên Kafka với partition key = source_account</div>
+                </div>
+            </div>
+
+            <div class="step step-3">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <div class="step-title">HOLD - Giữ tiền tạm thời</div>
+                    <div class="step-desc">Worker kiểm tra số dư, dùng CAS để giữ tiền, ghi HOLD entry với status SUCCESS/FAILED</div>
+                </div>
+            </div>
+
+            <div class="step step-4">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <div class="step-title">CREDIT - Cộng tiền đích</div>
+                    <div class="step-desc">Worker nhận "transfer.held", ghi CREDIT vào tài khoản đích, publish "transfer.credited"</div>
+                </div>
+            </div>
+
+            <div class="step step-5">
+                <div class="step-number">5</div>
+                <div class="step-content">
+                    <div class="step-title">COMMIT - Xác nhận giao dịch</div>
+                    <div class="step-desc">Worker ghi DEBIT và RELEASE, hoàn tất giao dịch, publish "transfer.committed"</div>
+                </div>
+            </div>
+
+            <div class="step step-6">
+                <div class="step-number">6</div>
+                <div class="step-content">
+                    <div class="step-title">BALANCE PROJECTOR - Cập nhật số dư</div>
+                    <div class="step-desc">Async cập nhật bảng balances dựa trên ledger_entries có status = SUCCESS</div>
+                </div>
+            </div>
+
+            <div class="step step-7">
+                <div class="step-number">7</div>
+                <div class="step-content">
+                    <div class="step-title">SUPPORT - Hỗ trợ & Giám sát</div>
+                    <div class="step-desc">SSE/Webhook thông báo realtime, Reconciler xử lý timeout, DLQ handle errors</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="states" class="content">
+        <h2>📊 Biểu đồ Trạng thái Giao dịch</h2>
+        <div class="state-diagram">
+            <div class="state state-initial">INITIAL</div>
+            <div class="arrow">↓</div>
+            <div class="state state-requested">REQUESTED</div>
+
+            <div style="display: flex; align-items: center; gap: 20px; margin: 20px 0;">
+                <div style="text-align: center;">
+                    <div class="arrow">↓</div>
+                    <div style="font-size: 0.8em; color: #27ae60;">transfer.held</div>
+                </div>
+                <div style="text-align: center;">
+                    <div class="arrow">↘</div>
+                    <div style="font-size: 0.8em; color: #e74c3c;">insufficient_funds</div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 100px;">
+                <div style="text-align: center;">
+                    <div class="state state-held">HELD</div>
+                    <div class="arrow" style="margin: 10px 0;">↓</div>
+                    <div style="font-size: 0.8em; color: #27ae60;">transfer.credited</div>
+                    <div class="arrow" style="margin: 10px 0;">↓</div>
+                    <div class="state state-credited">CREDITED</div>
+                    <div class="arrow" style="margin: 10px 0;">↓</div>
+                    <div style="font-size: 0.8em; color: #27ae60;">transfer.committed</div>
+                    <div class="arrow" style="margin: 10px 0;">↓</div>
+                    <div class="state state-committed">COMMITTED ✅</div>
+                </div>
+
+                <div style="text-align: center;">
+                    <div class="state state-rejected">REJECTED</div>
+                    <div style="margin: 20px 0;"></div>
+                    <div class="state state-cancelled">CANCELLED</div>
+                    <div style="font-size: 0.8em; color: #7f8c8d; margin-top: 10px;">
+                        (timeout/error<br>from any step)
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="timeline" class="content">
+        <h2>⏰ Timeline Ví dụ Thực tế</h2>
+        <p><strong>Ví dụ:</strong> Chuyển 100,000 VNĐ từ ACC001 → ACC002 vào 10:53 AM, 19/08/2025</p>
+
+        <div class="timeline">
+            <div class="timeline-item">
+                <div class="timeline-time">10:53:00 AM</div>
+                <div class="timeline-content">
+                    <strong>🚀 Bạn gửi yêu cầu chuyển tiền</strong><br>
+                    API Gateway nhận request và route đến shard_001
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-time">10:53:05 AM</div>
+                <div class="timeline-content">
+                    <strong>📝 Ingress ghi outbox</strong><br>
+                    Ghi idempotency_keys và outbox, trả về TX123, HTTP 202
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-time">10:53:10 AM</div>
+                <div class="timeline-content">
+                    <strong>📤 Outbox Relay publish event</strong><br>
+                    CDC đọc outbox, gửi "transfer.requested" lên Kafka
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-time">10:53:30 AM</div>
+                <div class="timeline-content">
+                    <strong>🔒 HOLD Worker giữ 100,000 VNĐ</strong><br>
+                    Check balance = 300,000 ≥ 100,000 ✅, CAS update balances<br>
+                    available: 300,000 → 200,000, open_hold: 0 → 100,000
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-time">10:54:00 AM</div>
+                <div class="timeline-content">
+                    <strong>💰 CREDIT Worker cộng tiền</strong><br>
+                    Ghi CREDIT vào ACC002, Balance Projector cập nhật book: 0 → 100,000
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-time">10:54:30 AM</div>
+                <div class="timeline-content">
+                    <strong>✅ COMMIT Worker hoàn tất</strong><br>
+                    Ghi DEBIT/RELEASE vào ACC001, Balance Projector cập nhật:<br>
+                    book: 300,000 → 200,000, open_hold: 100,000 → 0
+                </div>
+            </div>
+
+            <div class="timeline-item">
+                <div class="timeline-time">10:54:35 AM</div>
+                <div class="timeline-content">
+                    <strong>📡 SSE Notifier gửi thông báo</strong><br>
+                    Bạn nhận Webhook/SSE: "Chuyển tiền thành công! 💚"
+                </div>
+            </div>
+        </div>
+
+        <div style="background: #d4edda; padding: 20px; border-radius: 10px; border-left: 4px solid #28a745;">
+            <strong>🎯 Kết quả cuối cùng:</strong><br>
+            • ACC001: 200,000 VNĐ (từ 300,000)<br>
+            • ACC002: 100,000 VNĐ (từ 0)<br>
+            • Tổng thời gian: ~90 giây<br>
+            • Trạng thái: COMMITTED ✅
+        </div>
+    </div>
+
+    <div id="database" class="content">
+        <h2>🗄️ Database Schema Chi tiết</h2>
+
+        <div class="er-diagram">
+            <div class="schema-table">
+                <div class="table-header">👤 account_mst</div>
+                <div class="table-body">
+                    <div class="field">
+                        <span class="field-name">account_id</span>
+                        <span class="field-type">VARCHAR(20) PK</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">account_name</span>
+                        <span class="field-type">VARCHAR(100)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">account_type</span>
+                        <span class="field-type">ENUM</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">status</span>
+                        <span class="field-type">ENUM</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">created_at</span>
+                        <span class="field-type">TIMESTAMP</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="schema-table">
+                <div class="table-header">💰 balances</div>
+                <div class="table-body">
+                    <div class="field">
+                        <span class="field-name">account_id</span>
+                        <span class="field-type">VARCHAR(20) PK</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">book</span>
+                        <span class="field-type">DECIMAL(15,2)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">available</span>
+                        <span class="field-type">DECIMAL(15,2)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">open_hold</span>
+                        <span class="field-type">DECIMAL(15,2)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">version</span>
+                        <span class="field-type">BIGINT</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="schema-table">
+                <div class="table-header">📊 ledger_entries</div>
+                <div class="table-body">
+                    <div class="field">
+                        <span class="field-name">id</span>
+                        <span class="field-type">BIGINT AI PK</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">tx_id</span>
+                        <span class="field-type">VARCHAR(50)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">account_id</span>
+                        <span class="field-type">VARCHAR(20)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">leg_type</span>
+                        <span class="field-type">ENUM</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">amount</span>
+                        <span class="field-type">DECIMAL(15,2)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">status</span>
+                        <span class="field-type">ENUM</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="schema-table">
+                <div class="table-header">📤 outbox</div>
+                <div class="table-body">
+                    <div class="field">
+                        <span class="field-name">id</span>
+                        <span class="field-type">BIGINT AI PK</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">tx_id</span>
+                        <span class="field-type">VARCHAR(50)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">event_type</span>
+                        <span class="field-type">VARCHAR(50)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">payload</span>
+                        <span class="field-type">JSON</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">partition_key</span>
+                        <span class="field-type">VARCHAR(50)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">processed</span>
+                        <span class="field-type">BOOLEAN</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="schema-table">
+                <div class="table-header">🔑 idempotency_keys</div>
+                <div class="table-body">
+                    <div class="field">
+                        <span class="field-name">tx_id</span>
+                        <span class="field-type">VARCHAR(50) PK</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">request_hash</span>
+                        <span class="field-type">VARCHAR(64)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">status</span>
+                        <span class="field-type">ENUM</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">response</span>
+                        <span class="field-type">JSON</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">expires_at</span>
+                        <span class="field-type">TIMESTAMP</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="schema-table">
+                <div class="table-header">📋 transaction_status</div>
+                <div class="table-body">
+                    <div class="field">
+                        <span class="field-name">tx_id</span>
+                        <span class="field-type">VARCHAR(50) PK</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">source_account</span>
+                        <span class="field-type">VARCHAR(20)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">destination_account</span>
+                        <span class="field-type">VARCHAR(20)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">amount</span>
+                        <span class="field-type">DECIMAL(15,2)</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">status</span>
+                        <span class="field-type">ENUM</span>
+                    </div>
+                    <div class="field">
+                        <span class="field-name">error_message</span>
+                        <span class="field-type">TEXT</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h3>🔗 Sharding Strategy</h3>
+        <div class="diagram">
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 20px 0;">
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; text-align: center;">
+                    <h4>SHARD_001</h4>
+                    <div style="font-size: 0.9em; margin-top: 10px;">
+                        <div>📋 Accounts: ACC001, ACC003, ACC005...</div>
+                        <div>🔢 Hash: account_id % 3 = 1</div>
+                        <div>🏦 Contains: All tables</div>
+                    </div>
+                </div>
+
+                <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 10px; text-align: center;">
+                    <h4>SHARD_002</h4>
+                    <div style="font-size: 0.9em; margin-top: 10px;">
+                        <div>📋 Accounts: ACC002, ACC004, ACC006...</div>
+                        <div>🔢 Hash: account_id % 3 = 2</div>
+                        <div>🏦 Contains: All tables</div>
+                    </div>
+                </div>
+
+                <div style="background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); color: white; padding: 20px; border-radius: 10px; text-align: center;">
+                    <h4>SHARD_00N</h4>
+                    <div style="font-size: 0.9em; margin-top: 10px;">
+                        <div>📋 Accounts: ACC00N, ACC00M...</div>
+                        <div>🔢 Hash: account_id % 3 = 0</div>
+                        <div>🏦 Contains: All tables</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-top: 20px;">
+                <h4>🎯 Kafka Partitioning Strategy:</h4>
+                <ul style="margin: 10px 0; color: #2c3e50;">
+                    <li><strong>Partition Key:</strong> source_account_id (ACC001)</li>
+                    <li><strong>Benefit:</strong> All events cho 1 account đi cùng partition</li>
+                    <li><strong>Ordering:</strong> Đảm bảo xử lý tuần tự per account</li>
+                    <li><strong>Parallel:</strong> Các account khác nhau xử lý song song</li>
+                </ul>
+            </div>
+        </div>
+
+        <h3>📈 Sample Data Flow</h3>
+        <div style="background: #e8f5e8; padding: 20px; border-radius: 10px; border-left: 4px solid #28a745;">
+            <h4>Ví dụ: TX123 - Chuyển 100,000 VNĐ từ ACC001 → ACC002</h4>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+                <div>
+                    <h5>🏦 SHARD_001 (ACC001) - BEFORE:</h5>
+                    <div style="font-family: monospace; background: white; padding: 10px; border-radius: 5px;">
+                        balances.ACC001:<br>
+                        book: 300,000.00<br>
+                        available: 300,000.00<br>
+                        open_hold: 0.00
+                    </div>
+                </div>
+
+                <div>
+                    <h5>🏦 SHARD_002 (ACC002) - BEFORE:</h5>
+                    <div style="font-family: monospace; background: white; padding: 10px; border-radius: 5px;">
+                        balances.ACC002:<br>
+                        book: 0.00<br>
+                        available: 0.00<br>
+                        open_hold: 0.00
+                    </div>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin: 20px 0; font-size: 1.5em; color: #667eea;">
+                ⬇️ PROCESSING ⬇️
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div>
+                    <h5>🏦 SHARD_001 (ACC001) - AFTER:</h5>
+                    <div style="font-family: monospace; background: white; padding: 10px; border-radius: 5px;">
+                        balances.ACC001:<br>
+                        book: 200,000.00 ⬇️<br>
+                        available: 200,000.00 ⬇️<br>
+                        open_hold: 0.00<br><br>
+                        ledger_entries:<br>
+                        • HOLD: 100,000 (SUCCESS)<br>
+                        • DEBIT: 100,000 (SUCCESS)<br>
+                        • RELEASE: 100,000 (SUCCESS)
+                    </div>
+                </div>
+
+                <div>
+                    <h5>🏦 SHARD_002 (ACC002) - AFTER:</h5>
+                    <div style="font-family: monospace; background: white; padding: 10px; border-radius: 5px;">
+                        balances.ACC002:<br>
+                        book: 100,000.00 ⬆️<br>
+                        available: 100,000.00 ⬆️<br>
+                        open_hold: 0.00<br><br>
+                        ledger_entries:<br>
+                        • CREDIT: 100,000 (SUCCESS)
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+        function showTab(tabName) {
+            // Hide all content
+            const contents = document.querySelectorAll('.content');
+            contents.forEach(content => content.classList.remove('active'));
+
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => tab.classList.remove('active'));
+
+            // Show selected content
+            document.getElementById(tabName).classList.add('active');
+
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+
+        // Add hover effects and animations
+        document.addEventListener('DOMContentLoaded', function() {
+            const steps = document.querySelectorAll('.step');
+            steps.forEach((step, index) => {
+                step.style.animationDelay = `${index * 0.1}s`;
+                step.style.animation = 'fadeInUp 0.6s ease forwards';
+            });
+
+            const states = document.querySelectorAll('.state');
+            states.forEach(state => {
+                state.addEventListener('mouseenter', function() {
+                    this.style.transform = 'scale(1.05)';
+                    this.style.transition = 'transform 0.3s ease';
+                });
+
+                state.addEventListener('mouseleave', function() {
+                    this.style.transform = 'scale(1)';
+                });
+            });
+        });
+
+        // Add CSS animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeInUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(30px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            .step {
+                opacity: 0;
+            }
+
+            .layer {
+                transition: all 0.3s ease;
+            }
+
+            .layer:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            }
+
+            .schema-table {
+                transition: all 0.3s ease;
+            }
+
+            .schema-table:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            }
+
+            .timeline-item {
+                transition: all 0.3s ease;
+            }
+
+            .timeline-item:hover {
+                transform: translateX(5px);
+                background: rgba(102, 126, 234, 0.05);
+                border-radius: 8px;
+                padding-right: 20px;
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
