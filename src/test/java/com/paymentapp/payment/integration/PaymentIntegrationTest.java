@@ -1,5 +1,4 @@
-package com.paymentapp.payment.integration;
-
+package paymentapp.payment.integration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -63,9 +62,9 @@ class PaymentIntegrationTest {
         mockMvc.perform(post("/api/v1/payments/transfer")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isAccepted());
-//                .andExpected(jsonPath("$.status").value("ACCEPTED"))
-//                .andExpected(jsonPath("$.txId").exists());
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.txId").exists());
     }
 
     @Test

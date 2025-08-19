@@ -1,4 +1,92 @@
+# IDEs
 .vscode/
 .idea/
+*.iml
+*.ipr
+*.iws
 
+# Compiled class files
+*.class
+
+# Log files
 *.log
+
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# Gradle
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# Spring Boot
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# JVM crash logs
+hs_err_pid*
+replay_pid*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Application specific
+application-local.yml
+application-local.properties
+
+# Docker volumes
+mysql_data/
+redis_data/
+kafka_data/
+app_logs/
+
+# Debezium CDC
+/tmp/debezium-offsets
+/tmp/debezium-history
+
+# Test results
+TEST-*.xml
+
+# IDE workspace files
+.metadata
+.recommenders/
+.settings/
+.classpath
+.project
+.factorypath
+
+# Mac
+.DS_Store
+
+# Windows
+desktop.ini
+
+# Linux
+*~
+
+# Logs
+logs/
+*.log.*

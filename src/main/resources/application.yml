@@ -60,7 +60,7 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       auto-offset-reset: earliest
       properties:
-        spring.json.trusted.packages: "com.paymentapp.payment.event"
+        spring.json.trusted.packages: "paymentapp.payment.event"
 
 # Custom Application Configuration
 payment:
@@ -87,7 +87,7 @@ management:
 # Logging Configuration
 logging:
   level:
-    com.paymentapp: DEBUG
+    paymentapp: DEBUG
     org.springframework.kafka: INFO
     io.debezium: INFO
   pattern:

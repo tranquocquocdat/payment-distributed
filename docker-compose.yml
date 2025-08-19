@@ -11,7 +11,7 @@ services:
       MYSQL_USER: payment_user
       MYSQL_PASSWORD: payment_pass
     ports:
-      - "3306:3306"
+      - "3307:3306"  # Changed from 3306 to avoid conflicts
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -24,7 +24,7 @@ services:
     image: redis:7-alpine
     container_name: payment-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"  # Changed from 6379 to avoid conflicts
     volumes:
       - redis_data:/data
     networks:
@@ -38,7 +38,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     ports:
-      - "2181:2181"
+      - "2182:2181"  # Changed from 2181 to avoid conflicts
     networks:
       - payment-network
 
@@ -49,13 +49,13 @@ services:
     depends_on:
       - zookeeper
     ports:
-      - "9092:9092"
-      - "29092:29092"
+      - "9093:9092"  # Changed from 9092 to avoid conflicts
+      - "29093:29092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9093
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
@@ -97,7 +97,7 @@ services:
       DB_USERNAME: payment_user
       DB_PASSWORD: payment_pass
       REDIS_HOST: redis
-      REDIS_PORT: 6379
+      REDIS_PORT: 6379  # Internal port remains 6379
       KAFKA_SERVERS: kafka:29092
       CURRENT_SHARD: 1
     volumes:
