@@ -35,7 +35,7 @@ until docker exec payment-mysql mysqladmin ping -h localhost --silent; do
     sleep 5
 done
 
-# Check Kafka health
+# Check Kafka health - USE INTERNAL PORT 9092
 echo "📨 Checking Kafka health..."
 until docker exec payment-kafka kafka-topics --list --bootstrap-server localhost:9092 > /dev/null 2>&1; do
     echo "Waiting for Kafka..."

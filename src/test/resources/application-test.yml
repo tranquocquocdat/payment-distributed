@@ -23,5 +23,5 @@ spring:
 
 logging:
   level:
-    com.paymentapp: DEBUG
+    paymentapp: DEBUG
     org.springframework.kafka: WARN
