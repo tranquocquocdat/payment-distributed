@@ -96,8 +96,8 @@ services:
       DB_NAME: payment_db
       DB_USERNAME: payment_user
       DB_PASSWORD: payment_pass
-      REDIS_HOST: redis
-      REDIS_PORT: 6379  # Internal port remains 6379
+      REDIS_HOST: payment-redis
+      REDIS_PORT: 6379
       KAFKA_SERVERS: kafka:29092
       CURRENT_SHARD: 1
     volumes:
