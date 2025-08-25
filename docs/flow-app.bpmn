@@ -1,155 +1,367 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
-                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
-                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
-                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
-                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
-                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-                  id="Definitions_PaymentSystem"
-                  targetNamespace="http://bpmn.io/schema/bpmn"
-                  exporter="Camunda Modeler"
-                  exporterVersion="5.0.0">
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+             xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+             id="PaymentSystemDefinitions"
+             targetNamespace="http://bpmn.io/schema/bpmn">
 
-  <!-- Main Payment Process -->
-  <bpmn:process id="PaymentProcess" name="Distributed Payment Process" isExecutable="true">
+  <!-- Collaboration with Pools -->
+  <collaboration id="PaymentSystemCollaboration">
+    <participant id="Participant_Client" name="CLIENT APPLICATION" processRef="ClientProcess"/>
+    <participant id="Participant_PaymentService" name="PAYMENT SERVICE" processRef="PaymentProcess"/>
+    <participant id="Participant_Workers" name="WORKER SERVICES" processRef="WorkerProcess"/>
 
-    <!-- Start Event -->
-    <bpmn:startEvent id="StartEvent_1" name="User Initiates Transfer">
-      <bpmn:outgoing>Flow_01</bpmn:outgoing>
-    </bpmn:startEvent>
+    <!-- Message Flows between Pools -->
+    <messageFlow id="MessageFlow_TransferRequest" name="Transfer Request"
+                 sourceRef="Task_SubmitTransfer" targetRef="StartEvent_PaymentReceived"/>
+    <messageFlow id="MessageFlow_TransferResponse" name="Transfer Response"
+                 sourceRef="Task_SendResponse" targetRef="Task_ReceiveResponse"/>
+    <messageFlow id="MessageFlow_KafkaEvents" name="Kafka Events"
+                 sourceRef="Event_PublishKafka" targetRef="StartEvent_ConsumeEvent"/>
+  </collaboration>
+
+  <!-- CLIENT PROCESS -->
+  <process id="ClientProcess" name="Client Process" isExecutable="false">
+    <startEvent id="StartEvent_Client" name="User Initiates Transfer">
+      <outgoing>Flow_Client_1</outgoing>
+    </startEvent>
+
+    <userTask id="Task_SubmitTransfer" name="Submit Transfer Request">
+      <incoming>Flow_Client_1</incoming>
+      <outgoing>Flow_Client_2</outgoing>
+    </userTask>
+
+    <userTask id="Task_ReceiveResponse" name="Receive Response">
+      <incoming>Flow_Client_2</incoming>
+      <outgoing>Flow_Client_3</outgoing>
+      <outgoing>Flow_Client_4</outgoing>
+    </userTask>
+
+    <endEvent id="EndEvent_Success" name="Transfer Successful">
+      <incoming>Flow_Client_3</incoming>
+    </endEvent>
+
+    <endEvent id="EndEvent_Failed" name="Transfer Failed">
+      <incoming>Flow_Client_4</incoming>
+    </endEvent>
+
+    <sequenceFlow id="Flow_Client_1" sourceRef="StartEvent_Client" targetRef="Task_SubmitTransfer"/>
+    <sequenceFlow id="Flow_Client_2" sourceRef="Task_SubmitTransfer" targetRef="Task_ReceiveResponse"/>
+    <sequenceFlow id="Flow_Client_3" name="Success" sourceRef="Task_ReceiveResponse" targetRef="EndEvent_Success"/>
+    <sequenceFlow id="Flow_Client_4" name="Failed" sourceRef="Task_ReceiveResponse" targetRef="EndEvent_Failed"/>
+  </process>
+
+  <!-- PAYMENT SERVICE PROCESS -->
+  <process id="PaymentProcess" name="Payment Service Process" isExecutable="true">
+
+    <laneSet id="PaymentLaneSet">
+      <lane id="Lane_Ingress" name="STEP 1-2: INGRESS & OUTBOX">
+        <flowNodeRef>StartEvent_PaymentReceived</flowNodeRef>
+        <flowNodeRef>Task_Ingress</flowNodeRef>
+        <flowNodeRef>Gateway_Idempotency</flowNodeRef>
+        <flowNodeRef>EndEvent_Duplicate</flowNodeRef>
+        <flowNodeRef>Task_StoreTransaction</flowNodeRef>
+        <flowNodeRef>Task_OutboxRelay</flowNodeRef>
+        <flowNodeRef>Event_PublishKafka</flowNodeRef>
+        <flowNodeRef>Task_SendResponse</flowNodeRef>
+      </lane>
+    </laneSet>
+
+    <startEvent id="StartEvent_PaymentReceived" name="Receive Payment Request">
+      <outgoing>Flow_01</outgoing>
+    </startEvent>
 
     <!-- STEP 1: INGRESS -->
-    <bpmn:serviceTask id="Task_Ingress" name="STEP 1: INGRESS - Validate Request"
-                      camunda:class="paymentapp.payment.service.PaymentService">
-      <bpmn:incoming>Flow_01</bpmn:incoming>
-      <bpmn:outgoing>Flow_02</bpmn:outgoing>
-    </bpmn:serviceTask>
+    <serviceTask id="Task_Ingress" name="STEP 1: INGRESS - Validate Request"
+                 camunda:class="paymentapp.payment.service.PaymentService">
+      <incoming>Flow_01</incoming>
+      <outgoing>Flow_02</outgoing>
+    </serviceTask>
 
     <!-- Idempotency Check Gateway -->
-    <bpmn:exclusiveGateway id="Gateway_Idempotency" name="Idempotency Check?">
-      <bpmn:incoming>Flow_02</bpmn:incoming>
-      <bpmn:outgoing>Flow_03_duplicate</bpmn:outgoing>
-      <bpmn:outgoing>Flow_03_new</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
+    <exclusiveGateway id="Gateway_Idempotency" name="Idempotency Check?">
+      <incoming>Flow_02</incoming>
+      <outgoing>Flow_03_duplicate</outgoing>
+      <outgoing>Flow_03_new</outgoing>
+    </exclusiveGateway>
 
     <!-- Duplicate Request End -->
-    <bpmn:endEvent id="EndEvent_Duplicate" name="Return Existing Response">
-      <bpmn:incoming>Flow_03_duplicate</bpmn:incoming>
-    </bpmn:endEvent>
+    <endEvent id="EndEvent_Duplicate" name="Return Existing Response">
+      <incoming>Flow_03_duplicate</incoming>
+    </endEvent>
 
     <!-- Store Transaction -->
-    <bpmn:serviceTask id="Task_StoreTransaction" name="Store Transaction &amp; Create Outbox"
-                      camunda:class="paymentapp.payment.service.PaymentService">
-      <bpmn:incoming>Flow_03_new</bpmn:incoming>
-      <bpmn:outgoing>Flow_04</bpmn:outgoing>
-    </bpmn:serviceTask>
+    <serviceTask id="Task_StoreTransaction" name="Store Transaction & Create Outbox"
+                 camunda:class="paymentapp.payment.service.PaymentService">
+      <incoming>Flow_03_new</incoming>
+      <outgoing>Flow_04</outgoing>
+    </serviceTask>
 
     <!-- STEP 2: OUTBOX RELAY -->
-    <bpmn:serviceTask id="Task_OutboxRelay" name="STEP 2: OUTBOX RELAY - Publish Event"
-                      camunda:class="paymentapp.payment.service.OutboxRelay">
-      <bpmn:incoming>Flow_04</bpmn:incoming>
-      <bpmn:outgoing>Flow_05</bpmn:outgoing>
-    </bpmn:serviceTask>
+    <serviceTask id="Task_OutboxRelay" name="STEP 2: OUTBOX RELAY - Publish Event"
+                 camunda:class="paymentapp.payment.service.OutboxRelay">
+      <incoming>Flow_04</incoming>
+      <outgoing>Flow_05</outgoing>
+    </serviceTask>
 
     <!-- Kafka Message Event -->
-    <bpmn:intermediateThrowEvent id="Event_PublishKafka" name="Publish transfer.requested">
-      <bpmn:incoming>Flow_05</bpmn:incoming>
-      <bpmn:outgoing>Flow_06</bpmn:outgoing>
-      <bpmn:messageEventDefinition id="MessageEventDefinition_01" messageRef="Message_TransferRequested" />
-    </bpmn:intermediateThrowEvent>
+    <intermediateThrowEvent id="Event_PublishKafka" name="Publish transfer.requested">
+      <incoming>Flow_05</incoming>
+      <outgoing>Flow_06</outgoing>
+      <messageEventDefinition id="MessageEventDefinition_01" messageRef="Message_TransferRequested"/>
+    </intermediateThrowEvent>
+
+    <!-- Send Response -->
+    <serviceTask id="Task_SendResponse" name="Send HTTP 202 Response">
+      <incoming>Flow_06</incoming>
+      <outgoing>Flow_07</outgoing>
+    </serviceTask>
+
+    <endEvent id="EndEvent_PaymentComplete" name="Payment Request Processed">
+      <incoming>Flow_07</incoming>
+    </endEvent>
+
+    <!-- Payment Service Sequence Flows -->
+    <sequenceFlow id="Flow_01" sourceRef="StartEvent_PaymentReceived" targetRef="Task_Ingress"/>
+    <sequenceFlow id="Flow_02" sourceRef="Task_Ingress" targetRef="Gateway_Idempotency"/>
+    <sequenceFlow id="Flow_03_duplicate" name="Duplicate" sourceRef="Gateway_Idempotency" targetRef="EndEvent_Duplicate">
+      <conditionExpression xsi:type="tFormalExpression">${idempotencyExists == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_03_new" name="New Request" sourceRef="Gateway_Idempotency" targetRef="Task_StoreTransaction">
+      <conditionExpression xsi:type="tFormalExpression">${idempotencyExists == false}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_04" sourceRef="Task_StoreTransaction" targetRef="Task_OutboxRelay"/>
+    <sequenceFlow id="Flow_05" sourceRef="Task_OutboxRelay" targetRef="Event_PublishKafka"/>
+    <sequenceFlow id="Flow_06" sourceRef="Event_PublishKafka" targetRef="Task_SendResponse"/>
+    <sequenceFlow id="Flow_07" sourceRef="Task_SendResponse" targetRef="EndEvent_PaymentComplete"/>
+
+  </process>
+
+  <!-- WORKER SERVICES PROCESS -->
+  <process id="WorkerProcess" name="Worker Services Process" isExecutable="true">
+
+    <laneSet id="WorkerLaneSet">
+      <lane id="Lane_HoldWorker" name="STEP 3: HOLD WORKER">
+        <flowNodeRef>StartEvent_ConsumeEvent</flowNodeRef>
+        <flowNodeRef>Task_HoldWorker</flowNodeRef>
+        <flowNodeRef>Gateway_SufficientFunds</flowNodeRef>
+        <flowNodeRef>Task_RejectTransfer</flowNodeRef>
+        <flowNodeRef>EndEvent_Rejected</flowNodeRef>
+        <flowNodeRef>Task_CreateHold</flowNodeRef>
+        <flowNodeRef>Event_TransferHeld</flowNodeRef>
+      </lane>
+      <lane id="Lane_CreditWorker" name="STEP 4: CREDIT WORKER">
+        <flowNodeRef>Task_CreditWorker</flowNodeRef>
+        <flowNodeRef>Gateway_AccountValid</flowNodeRef>
+        <flowNodeRef>Task_RejectAccount</flowNodeRef>
+        <flowNodeRef>EndEvent_InvalidAccount</flowNodeRef>
+        <flowNodeRef>Task_PostCredit</flowNodeRef>
+        <flowNodeRef>Event_TransferCredited</flowNodeRef>
+      </lane>
+      <lane id="Lane_CommitWorker" name="STEP 5: COMMIT WORKER">
+        <flowNodeRef>Task_CommitWorker</flowNodeRef>
+        <flowNodeRef>Gateway_ParallelStart</flowNodeRef>
+        <flowNodeRef>Task_PostDebit</flowNodeRef>
+        <flowNodeRef>Task_ReleaseHold</flowNodeRef>
+        <flowNodeRef>Gateway_ParallelJoin</flowNodeRef>
+        <flowNodeRef>Event_TransferCommitted</flowNodeRef>
+      </lane>
+      <lane id="Lane_BalanceProjector" name="STEP 6-7: BALANCE & RECONCILER">
+        <flowNodeRef>Task_BalanceProjector</flowNodeRef>
+        <flowNodeRef>Task_SSENotifier</flowNodeRef>
+        <flowNodeRef>EndEvent_WorkersComplete</flowNodeRef>
+      </lane>
+    </laneSet>
+
+    <startEvent id="StartEvent_ConsumeEvent" name="Consume Kafka Event">
+      <outgoing>Flow_W01</outgoing>
+    </startEvent>
 
     <!-- STEP 3: HOLD WORKER -->
-    <bpmn:serviceTask id="Task_HoldWorker" name="STEP 3: HOLD WORKER - Reserve Funds"
-                      camunda:class="paymentapp.payment.worker.HoldWorker">
-      <bpmn:incoming>Flow_06</bpmn:incoming>
-      <bpmn:outgoing>Flow_07</bpmn:outgoing>
-    </bpmn:serviceTask>
+    <serviceTask id="Task_HoldWorker" name="STEP 3: HOLD WORKER - Reserve Funds"
+                 camunda:class="paymentapp.payment.worker.HoldWorker">
+      <incoming>Flow_W01</incoming>
+      <outgoing>Flow_W02</outgoing>
+    </serviceTask>
 
     <!-- Sufficient Funds Gateway -->
-    <bpmn:exclusiveGateway id="Gateway_SufficientFunds" name="Sufficient Funds?">
-      <bpmn:incoming>Flow_07</bpmn:incoming>
-      <bpmn:outgoing>Flow_08_reject</bpmn:outgoing>
-      <bpmn:outgoing>Flow_08_hold</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
+    <exclusiveGateway id="Gateway_SufficientFunds" name="Sufficient Funds?">
+      <incoming>Flow_W02</incoming>
+      <outgoing>Flow_W03_reject</outgoing>
+      <outgoing>Flow_W03_hold</outgoing>
+    </exclusiveGateway>
 
     <!-- Reject Transfer -->
-    <bpmn:serviceTask id="Task_RejectTransfer" name="Reject - Insufficient Funds">
-      <bpmn:incoming>Flow_08_reject</bpmn:incoming>
-      <bpmn:outgoing>Flow_09_reject</bpmn:outgoing>
-    </bpmn:serviceTask>
+    <serviceTask id="Task_RejectTransfer" name="Reject - Insufficient Funds">
+      <incoming>Flow_W03_reject</incoming>
+      <outgoing>Flow_W04_reject</outgoing>
+    </serviceTask>
 
-    <bpmn:endEvent id="EndEvent_Rejected" name="Transfer Rejected">
-      <bpmn:incoming>Flow_09_reject</bpmn:incoming>
-      <bpmn:messageEventDefinition id="MessageEventDefinition_02" messageRef="Message_TransferRejected" />
-    </bpmn:endEvent>
+    <endEvent id="EndEvent_Rejected" name="Transfer Rejected">
+      <incoming>Flow_W04_reject</incoming>
+      <messageEventDefinition id="MessageEventDefinition_02" messageRef="Message_TransferRejected"/>
+    </endEvent>
 
     <!-- Create Hold -->
-    <bpmn:serviceTask id="Task_CreateHold" name="Create Hold">
-      <bpmn:incoming>Flow_08_hold</bpmn:incoming>
-      <bpmn:outgoing>Flow_09_hold</bpmn:outgoing>
-    </bpmn:serviceTask>
+    <serviceTask id="Task_CreateHold" name="Create Hold">
+      <incoming>Flow_W03_hold</incoming>
+      <outgoing>Flow_W04_hold</outgoing>
+    </serviceTask>
 
     <!-- Transfer Held Event -->
-    <bpmn:intermediateThrowEvent id="Event_TransferHeld" name="Publish transfer.held">
-      <bpmn:incoming>Flow_09_hold</bpmn:incoming>
-      <bpmn:outgoing>Flow_10</bpmn:outgoing>
-      <bpmn:messageEventDefinition id="MessageEventDefinition_03" messageRef="Message_TransferHeld" />
-    </bpmn:intermediateThrowEvent>
+    <intermediateThrowEvent id="Event_TransferHeld" name="Publish transfer.held">
+      <incoming>Flow_W04_hold</incoming>
+      <outgoing>Flow_W05</outgoing>
+      <messageEventDefinition id="MessageEventDefinition_03" messageRef="Message_TransferHeld"/>
+    </intermediateThrowEvent>
 
     <!-- STEP 4: CREDIT WORKER -->
-    <bpmn:serviceTask id="Task_CreditWorker" name="STEP 4: CREDIT WORKER - Add Funds"
-                      camunda:class="paymentapp.payment.worker.CreditWorker">
-      <bpmn:incoming>Flow_10</bpmn:incoming>
-      <bpmn:outgoing>Flow_11</bpmn:outgoing>
-    </bpmn:serviceTask>
+    <serviceTask id="Task_CreditWorker" name="STEP 4: CREDIT WORKER - Add Funds"
+                 camunda:class="paymentapp.payment.worker.CreditWorker">
+      <incoming>Flow_W05</incoming>
+      <outgoing>Flow_W06</outgoing>
+    </serviceTask>
 
     <!-- Account Validation Gateway -->
-    <bpmn:exclusiveGateway id="Gateway_AccountValid" name="Account Valid?">
-      <bpmn:incoming>Flow_11</bpmn:incoming>
-      <bpmn:outgoing>Flow_12_invalid</bpmn:outgoing>
-      <bpmn:outgoing>Flow_12_valid</bpmn:outgoing>
-    </bpmn:exclusiveGateway>
+    <exclusiveGateway id="Gateway_AccountValid" name="Account Valid?">
+      <incoming>Flow_W06</incoming>
+      <outgoing>Flow_W07_invalid</outgoing>
+      <outgoing>Flow_W07_valid</outgoing>
+    </exclusiveGateway>
 
     <!-- Invalid Account Path -->
-    <bpmn:serviceTask id="Task_RejectAccount" name="Reject - Invalid Account">
-      <bpmn:incoming>Flow_12_invalid</bpmn:incoming>
-      <bpmn:outgoing>Flow_13_invalid</bpmn:outgoing>
-    </bpmn:serviceTask>
+    <serviceTask id="Task_RejectAccount" name="Reject - Invalid Account">
+      <incoming>Flow_W07_invalid</incoming>
+      <outgoing>Flow_W08_invalid</outgoing>
+    </serviceTask>
 
-    <bpmn:endEvent id="EndEvent_InvalidAccount" name="Invalid Account">
-      <bpmn:incoming>Flow_13_invalid</bpmn:incoming>
-      <bpmn:messageEventDefinition id="MessageEventDefinition_04" messageRef="Message_TransferRejected" />
-    </bpmn:endEvent>
+    <endEvent id="EndEvent_InvalidAccount" name="Invalid Account">
+      <incoming>Flow_W08_invalid</incoming>
+      <messageEventDefinition id="MessageEventDefinition_04" messageRef="Message_TransferRejected"/>
+    </endEvent>
 
     <!-- Post Credit -->
-    <bpmn:serviceTask id="Task_PostCredit" name="Post Credit to Destination">
-      <bpmn:incoming>Flow_12_valid</bpmn:incoming>
-      <bpmn:outgoing>Flow_13_credit</bpmn:outgoing>
-    </bpmn:serviceTask>
+    <serviceTask id="Task_PostCredit" name="Post Credit to Destination">
+      <incoming>Flow_W07_valid</incoming>
+      <outgoing>Flow_W08_credit</outgoing>
+    </serviceTask>
 
     <!-- Transfer Credited Event -->
-    <bpmn:intermediateThrowEvent id="Event_TransferCredited" name="Publish transfer.credited">
-      <bpmn:incoming>Flow_13_credit</bpmn:incoming>
-      <bpmn:outgoing>Flow_14</bpmn:outgoing>
-      <bpmn:messageEventDefinition id="MessageEventDefinition_05" messageRef="Message_TransferCredited" />
-    </bpmn:intermediateThrowEvent>
+    <intermediateThrowEvent id="Event_TransferCredited" name="Publish transfer.credited">
+      <incoming>Flow_W08_credit</incoming>
+      <outgoing>Flow_W09</outgoing>
+      <messageEventDefinition id="MessageEventDefinition_05" messageRef="Message_TransferCredited"/>
+    </intermediateThrowEvent>
 
     <!-- STEP 5: COMMIT WORKER -->
-    <bpmn:serviceTask id="Task_CommitWorker" name="STEP 5: COMMIT WORKER - Finalize Transaction"
-                      camunda:class="paymentapp.payment.worker.CommitWorker">
-      <bpmn:incoming>Flow_14</bpmn:incoming>
-      <bpmn:outgoing>Flow_15</bpmn:outgoing>
-    </bpmn:serviceTask>
+    <serviceTask id="Task_CommitWorker" name="STEP 5: COMMIT WORKER - Finalize Transaction"
+                 camunda:class="paymentapp.payment.worker.CommitWorker">
+      <incoming>Flow_W09</incoming>
+      <outgoing>Flow_W10</outgoing>
+    </serviceTask>
 
     <!-- Parallel Gateway for Debit and Release -->
-    <bpmn:parallelGateway id="Gateway_ParallelStart">
-      <bpmn:incoming>Flow_15</bpmn:incoming>
-      <bpmn:outgoing>Flow_16_debit</bpmn:outgoing>
-      <bpmn:outgoing>Flow_16_release</bpmn:outgoing>
-    </bpmn:parallelGateway>
+    <parallelGateway id="Gateway_ParallelStart">
+      <incoming>Flow_W10</incoming>
+      <outgoing>Flow_W11_debit</outgoing>
+      <outgoing>Flow_W11_release</outgoing>
+    </parallelGateway>
 
     <!-- Post Debit -->
-    <bpmn:serviceTask id="Task_PostDebit" name="Post Debit to Source">
+    <serviceTask id="Task_PostDebit" name="Post Debit to Source">
+      <incoming>Flow_W11_debit</incoming>
+      <outgoing>Flow_W12_debit</outgoing>
+    </serviceTask>
+
+    <!-- Release Hold -->
+    <serviceTask id="Task_ReleaseHold" name="Release Hold from Source">
+      <incoming>Flow_W11_release</incoming>
+      <outgoing>Flow_W12_release</outgoing>
+    </serviceTask>
+
+    <!-- Join Parallel Gateway -->
+    <parallelGateway id="Gateway_ParallelJoin">
+      <incoming>Flow_W12_debit</incoming>
+      <incoming>Flow_W12_release</incoming>
+      <outgoing>Flow_W13</outgoing>
+    </parallelGateway>
+
+    <!-- Transfer Committed Event -->
+    <intermediateThrowEvent id="Event_TransferCommitted" name="Publish transfer.committed">
+      <incoming>Flow_W13</incoming>
+      <outgoing>Flow_W14</outgoing>
+      <messageEventDefinition id="MessageEventDefinition_06" messageRef="Message_TransferCommitted"/>
+    </intermediateThrowEvent>
+
+    <!-- STEP 6: BALANCE PROJECTOR -->
+    <serviceTask id="Task_BalanceProjector" name="STEP 6: BALANCE PROJECTOR - Update Balances"
+                 camunda:class="paymentapp.payment.worker.BalanceProjector">
+      <incoming>Flow_W14</incoming>
+      <outgoing>Flow_W15</outgoing>
+    </serviceTask>
+
+    <!-- SSE Notification -->
+    <serviceTask id="Task_SSENotifier" name="STEP 7: Send Real-time Notification"
+                 camunda:class="paymentapp.payment.service.NotificationService">
+      <incoming>Flow_W15</incoming>
+      <outgoing>Flow_W16</outgoing>
+    </serviceTask>
+
+    <!-- Success End Event -->
+    <endEvent id="EndEvent_WorkersComplete" name="Transaction Processing Complete">
+      <incoming>Flow_W16</incoming>
+    </endEvent>
+
+    <!-- Worker Sequence Flows -->
+    <sequenceFlow id="Flow_W01" sourceRef="StartEvent_ConsumeEvent" targetRef="Task_HoldWorker"/>
+    <sequenceFlow id="Flow_W02" sourceRef="Task_HoldWorker" targetRef="Gateway_SufficientFunds"/>
+    <sequenceFlow id="Flow_W03_reject" name="No" sourceRef="Gateway_SufficientFunds" targetRef="Task_RejectTransfer">
+      <conditionExpression xsi:type="tFormalExpression">${sufficientFunds == false}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_W03_hold" name="Yes" sourceRef="Gateway_SufficientFunds" targetRef="Task_CreateHold">
+      <conditionExpression xsi:type="tFormalExpression">${sufficientFunds == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_W04_reject" sourceRef="Task_RejectTransfer" targetRef="EndEvent_Rejected"/>
+    <sequenceFlow id="Flow_W04_hold" sourceRef="Task_CreateHold" targetRef="Event_TransferHeld"/>
+    <sequenceFlow id="Flow_W05" sourceRef="Event_TransferHeld" targetRef="Task_CreditWorker"/>
+    <sequenceFlow id="Flow_W06" sourceRef="Task_CreditWorker" targetRef="Gateway_AccountValid"/>
+    <sequenceFlow id="Flow_W07_invalid" name="No" sourceRef="Gateway_AccountValid" targetRef="Task_RejectAccount">
+      <conditionExpression xsi:type="tFormalExpression">${accountValid == false}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_W07_valid" name="Yes" sourceRef="Gateway_AccountValid" targetRef="Task_PostCredit">
+      <conditionExpression xsi:type="tFormalExpression">${accountValid == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="Flow_W08_invalid" sourceRef="Task_RejectAccount" targetRef="EndEvent_InvalidAccount"/>
+    <sequenceFlow id="Flow_W08_credit" sourceRef="Task_PostCredit" targetRef="Event_TransferCredited"/>
+    <sequenceFlow id="Flow_W09" sourceRef="Event_TransferCredited" targetRef="Task_CommitWorker"/>
+    <sequenceFlow id="Flow_W10" sourceRef="Task_CommitWorker" targetRef="Gateway_ParallelStart"/>
+    <sequenceFlow id="Flow_W11_debit" sourceRef="Gateway_ParallelStart" targetRef="Task_PostDebit"/>
+    <sequenceFlow id="Flow_W11_release" sourceRef="Gateway_ParallelStart" targetRef="Task_ReleaseHold"/>
+    <sequenceFlow id="Flow_W12_debit" sourceRef="Task_PostDebit" targetRef="Gateway_ParallelJoin"/>
+    <sequenceFlow id="Flow_W12_release" sourceRef="Task_ReleaseHold" targetRef="Gateway_ParallelJoin"/>
+    <sequenceFlow id="Flow_W13" sourceRef="Gateway_ParallelJoin" targetRef="Event_TransferCommitted"/>
+    <sequenceFlow id="Flow_W14" sourceRef="Event_TransferCommitted" targetRef="Task_BalanceProjector"/>
+    <sequenceFlow id="Flow_W15" sourceRef="Task_BalanceProjector" targetRef="Task_SSENotifier"/>
+    <sequenceFlow id="Flow_W16" sourceRef="Task_SSENotifier" targetRef="EndEvent_WorkersComplete"/>
+
+  </process>
+
+  <!-- Message Definitions -->
+  <message id="Message_TransferRequested" name="transfer.requested"/>
+  <message id="Message_TransferHeld" name="transfer.held"/>
+  <message id="Message_TransferCredited" name="transfer.credited"/>
+  <message id="Message_TransferCommitted" name="transfer.committed"/>
+  <message id="Message_TransferRejected" name="transfer.rejected"/>
+  <message id="Message_TransferCancelled" name="transfer.cancelled"/>
+
+  <!-- Error Definitions -->
+  <error id="Error_InsufficientFunds" name="InsufficientFunds" errorCode="INSUFFICIENT_FUNDS"/>
+  <error id="Error_InvalidAccount" name="InvalidAccount" errorCode="INVALID_ACCOUNT"/>
+
+</definitions>Task_PostDebit" name="Post Debit to Source">
       <bpmn:incoming>Flow_16_debit</bpmn:incoming>
       <bpmn:outgoing>Flow_17_debit</bpmn:outgoing>
     </bpmn:serviceTask>
@@ -287,16 +499,285 @@
 
   </bpmn:process>
 
-  <!-- Message Definitions -->
-  <bpmn:message id="Message_TransferRequested" name="transfer.requested" />
-  <bpmn:message id="Message_TransferHeld" name="transfer.held" />
-  <bpmn:message id="Message_TransferCredited" name="transfer.credited" />
-  <bpmn:message id="Message_TransferCommitted" name="transfer.committed" />
-  <bpmn:message id="Message_TransferRejected" name="transfer.rejected" />
-  <bpmn:message id="Message_TransferCancelled" name="transfer.cancelled" />
+  <!-- BPMN Diagram Layout -->
+  <bpmndi:BPMNDiagram id="PaymentSystemDiagram">
+    <bpmndi:BPMNPlane id="BPMNPlane_PaymentSystem" bpmnElement="PaymentSystemCollaboration">
 
-  <!-- Error Definitions -->
-  <bpmn:error id="Error_InsufficientFunds" name="InsufficientFunds" errorCode="INSUFFICIENT_FUNDS" />
-  <bpmn:error id="Error_InvalidAccount" name="InvalidAccount" errorCode="INVALID_ACCOUNT" />
+      <!-- Pool 1: Client Application -->
+      <bpmndi:BPMNShape id="Participant_Client_Shape" bpmnElement="Participant_Client" isHorizontal="true">
+        <dc:Bounds x="50" y="50" width="1400" height="200"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
 
-</bpmn:definitions>
+      <!-- Pool 2: Payment Service -->
+      <bpmndi:BPMNShape id="Participant_PaymentService_Shape" bpmnElement="Participant_PaymentService" isHorizontal="true">
+        <dc:Bounds x="50" y="300" width="1400" height="250"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <!-- Pool 3: Worker Services -->
+      <bpmndi:BPMNShape id="Participant_Workers_Shape" bpmnElement="Participant_Workers" isHorizontal="true">
+        <dc:Bounds x="50" y="600" width="1400" height="600"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <!-- Payment Service Lane -->
+      <bpmndi:BPMNShape id="Lane_Ingress_Shape" bpmnElement="Lane_Ingress" isHorizontal="true">
+        <dc:Bounds x="80" y="300" width="1370" height="250"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <!-- Worker Service Lanes -->
+      <bpmndi:BPMNShape id="Lane_HoldWorker_Shape" bpmnElement="Lane_HoldWorker" isHorizontal="true">
+        <dc:Bounds x="80" y="600" width="1370" height="150"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Lane_CreditWorker_Shape" bpmnElement="Lane_CreditWorker" isHorizontal="true">
+        <dc:Bounds x="80" y="750" width="1370" height="150"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Lane_CommitWorker_Shape" bpmnElement="Lane_CommitWorker" isHorizontal="true">
+        <dc:Bounds x="80" y="900" width="1370" height="150"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Lane_BalanceProjector_Shape" bpmnElement="Lane_BalanceProjector" isHorizontal="true">
+        <dc:Bounds x="80" y="1050" width="1370" height="150"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <!-- Client Process Elements -->
+      <bpmndi:BPMNShape id="StartEvent_Client_Shape" bpmnElement="StartEvent_Client">
+        <dc:Bounds x="130" y="130" width="36" height="36"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="105" y="173" width="86" height="27"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_SubmitTransfer_Shape" bpmnElement="Task_SubmitTransfer">
+        <dc:Bounds x="220" y="108" width="100" height="80"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_ReceiveResponse_Shape" bpmnElement="Task_ReceiveResponse">
+        <dc:Bounds x="1100" y="108" width="100" height="80"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="EndEvent_Success_Shape" bpmnElement="EndEvent_Success">
+        <dc:Bounds x="1250" y="108" width="36" height="36"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1225" y="151" width="86" height="14"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="EndEvent_Failed_Shape" bpmnElement="EndEvent_Failed">
+        <dc:Bounds x="1250" y="190" width="36" height="36"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1230" y="233" width="76" height="14"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <!-- Payment Service Elements -->
+      <bpmndi:BPMNShape id="StartEvent_PaymentReceived_Shape" bpmnElement="StartEvent_PaymentReceived">
+        <dc:Bounds x="130" y="380" width="36" height="36"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="105" y="423" width="86" height="27"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_Ingress_Shape" bpmnElement="Task_Ingress">
+        <dc:Bounds x="220" y="358" width="120" height="80"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Gateway_Idempotency_Shape" bpmnElement="Gateway_Idempotency" isMarkerVisible="true">
+        <dc:Bounds x="380" y="373" width="50" height="50"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="365" y="343" width="80" height="27"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="EndEvent_Duplicate_Shape" bpmnElement="EndEvent_Duplicate">
+        <dc:Bounds x="480" y="320" width="36" height="36"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="455" y="363" width="86" height="27"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_StoreTransaction_Shape" bpmnElement="Task_StoreTransaction">
+        <dc:Bounds x="480" y="430" width="120" height="80"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_OutboxRelay_Shape" bpmnElement="Task_OutboxRelay">
+        <dc:Bounds x="640" y="358" width="120" height="80"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Event_PublishKafka_Shape" bpmnElement="Event_PublishKafka">
+        <dc:Bounds x="800" y="380" width="36" height="36"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="775" y="423" width="86" height="27"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_SendResponse_Shape" bpmnElement="Task_SendResponse">
+        <dc:Bounds x="880" y="358" width="100" height="80"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="EndEvent_PaymentComplete_Shape" bpmnElement="EndEvent_PaymentComplete">
+        <dc:Bounds x="1020" y="380" width="36" height="36"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="995" y="423" width="86" height="27"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <!-- Worker Process Elements -->
+      <bpmndi:BPMNShape id="StartEvent_ConsumeEvent_Shape" bpmnElement="StartEvent_ConsumeEvent">
+        <dc:Bounds x="130" y="655" width="36" height="36"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="105" y="698" width="86" height="27"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_HoldWorker_Shape" bpmnElement="Task_HoldWorker">
+        <dc:Bounds x="220" y="633" width="120" height="80"/>
+        <bpmndi:BPMNLabel/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Gateway_SufficientFunds_Shape" bpmnElement="Gateway_SufficientFunds" isMarkerVisible="true">
+        <dc:Bounds x="380" y="648" width="50" height="50"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="365" y="618" width="80" height="14"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <!-- Client Process Flows -->
+      <bpmndi:BPMNEdge id="Flow_Client_1_Edge" bpmnElement="Flow_Client_1">
+        <di:waypoint x="166" y="148"/>
+        <di:waypoint x="220" y="148"/>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_Client_2_Edge" bpmnElement="Flow_Client_2">
+        <di:waypoint x="320" y="148"/>
+        <di:waypoint x="1100" y="148"/>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_Client_3_Edge" bpmnElement="Flow_Client_3">
+        <di:waypoint x="1200" y="126"/>
+        <di:waypoint x="1250" y="126"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1210" y="108" width="40" y="14"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_Client_4_Edge" bpmnElement="Flow_Client_4">
+        <di:waypoint x="1200" y="170"/>
+        <di:waypoint x="1225" y="170"/>
+        <di:waypoint x="1225" y="208"/>
+        <di:waypoint x="1250" y="208"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1210" y="185" width="30" height="14"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+
+      <!-- Payment Service Flows -->
+      <bpmndi:BPMNEdge id="Flow_01_Edge" bpmnElement="Flow_01">
+        <di:waypoint x="166" y="398"/>
+        <di:waypoint x="220" y="398"/>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_02_Edge" bpmnElement="Flow_02">
+        <di:waypoint x="340" y="398"/>
+        <di:waypoint x="380" y="398"/>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_03_duplicate_Edge" bpmnElement="Flow_03_duplicate">
+        <di:waypoint x="405" y="373"/>
+        <di:waypoint x="405" y="338"/>
+        <di:waypoint x="480" y="338"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="420" y="320" width="48" height="14"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_03_new_Edge" bpmnElement="Flow_03_new">
+        <di:waypoint x="405" y="423"/>
+        <di:waypoint x="405" y="470"/>
+        <di:waypoint x="480" y="470"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="420" y="445" width="68" height="14"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_04_Edge" bpmnElement="Flow_04">
+        <di:waypoint x="540" y="430"/>
+        <di:waypoint x="540" y="398"/>
+        <di:waypoint x="640" y="398"/>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_05_Edge" bpmnElement="Flow_05">
+        <di:waypoint x="760" y="398"/>
+        <di:waypoint x="800" y="398"/>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_06_Edge" bpmnElement="Flow_06">
+        <di:waypoint x="836" y="398"/>
+        <di:waypoint x="880" y="398"/>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_07_Edge" bpmnElement="Flow_07">
+        <di:waypoint x="980" y="398"/>
+        <di:waypoint x="1020" y="398"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- Worker Process Flows -->
+      <bpmndi:BPMNEdge id="Flow_W01_Edge" bpmnElement="Flow_W01">
+        <di:waypoint x="166" y="673"/>
+        <di:waypoint x="220" y="673"/>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="Flow_W02_Edge" bpmnElement="Flow_W02">
+        <di:waypoint x="340" y="673"/>
+        <di:waypoint x="380" y="673"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- Message Flows -->
+      <bpmndi:BPMNEdge id="MessageFlow_TransferRequest_Edge" bpmnElement="MessageFlow_TransferRequest">
+        <di:waypoint x="270" y="188"/>
+        <di:waypoint x="270" y="284"/>
+        <di:waypoint x="148" y="284"/>
+        <di:waypoint x="148" y="380"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="185" y="266" width="82" height="14"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="MessageFlow_TransferResponse_Edge" bpmnElement="MessageFlow_TransferResponse">
+        <di:waypoint x="930" y="358"/>
+        <di:waypoint x="930" y="284"/>
+        <di:waypoint x="1150" y="284"/>
+        <di:waypoint x="1150" y="188"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1015" y="266" width="90" height="14"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+
+      <bpmndi:BPMNEdge id="MessageFlow_KafkaEvents_Edge" bpmnElement="MessageFlow_KafkaEvents">
+        <di:waypoint x="818" y="416"/>
+        <di:waypoint x="818" y="564"/>
+        <di:waypoint x="148" y="564"/>
+        <di:waypoint x="148" y="655"/>
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="450" y="546" width="66" height="14"/>
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</definitions>
