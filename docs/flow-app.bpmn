@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_PaymentSystem"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="Camunda Modeler"
+                  exporterVersion="5.0.0">
+
+  <!-- Main Payment Process -->
+  <bpmn:process id="PaymentProcess" name="Distributed Payment Process" isExecutable="true">
+
+    <!-- Start Event -->
+    <bpmn:startEvent id="StartEvent_1" name="User Initiates Transfer">
+      <bpmn:outgoing>Flow_01</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <!-- STEP 1: INGRESS -->
+    <bpmn:serviceTask id="Task_Ingress" name="STEP 1: INGRESS - Validate Request"
+                      camunda:class="paymentapp.payment.service.PaymentService">
+      <bpmn:incoming>Flow_01</bpmn:incoming>
+      <bpmn:outgoing>Flow_02</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Idempotency Check Gateway -->
+    <bpmn:exclusiveGateway id="Gateway_Idempotency" name="Idempotency Check?">
+      <bpmn:incoming>Flow_02</bpmn:incoming>
+      <bpmn:outgoing>Flow_03_duplicate</bpmn:outgoing>
+      <bpmn:outgoing>Flow_03_new</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <!-- Duplicate Request End -->
+    <bpmn:endEvent id="EndEvent_Duplicate" name="Return Existing Response">
+      <bpmn:incoming>Flow_03_duplicate</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Store Transaction -->
+    <bpmn:serviceTask id="Task_StoreTransaction" name="Store Transaction &amp; Create Outbox"
+                      camunda:class="paymentapp.payment.service.PaymentService">
+      <bpmn:incoming>Flow_03_new</bpmn:incoming>
+      <bpmn:outgoing>Flow_04</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- STEP 2: OUTBOX RELAY -->
+    <bpmn:serviceTask id="Task_OutboxRelay" name="STEP 2: OUTBOX RELAY - Publish Event"
+                      camunda:class="paymentapp.payment.service.OutboxRelay">
+      <bpmn:incoming>Flow_04</bpmn:incoming>
+      <bpmn:outgoing>Flow_05</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Kafka Message Event -->
+    <bpmn:intermediateThrowEvent id="Event_PublishKafka" name="Publish transfer.requested">
+      <bpmn:incoming>Flow_05</bpmn:incoming>
+      <bpmn:outgoing>Flow_06</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_01" messageRef="Message_TransferRequested" />
+    </bpmn:intermediateThrowEvent>
+
+    <!-- STEP 3: HOLD WORKER -->
+    <bpmn:serviceTask id="Task_HoldWorker" name="STEP 3: HOLD WORKER - Reserve Funds"
+                      camunda:class="paymentapp.payment.worker.HoldWorker">
+      <bpmn:incoming>Flow_06</bpmn:incoming>
+      <bpmn:outgoing>Flow_07</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Sufficient Funds Gateway -->
+    <bpmn:exclusiveGateway id="Gateway_SufficientFunds" name="Sufficient Funds?">
+      <bpmn:incoming>Flow_07</bpmn:incoming>
+      <bpmn:outgoing>Flow_08_reject</bpmn:outgoing>
+      <bpmn:outgoing>Flow_08_hold</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <!-- Reject Transfer -->
+    <bpmn:serviceTask id="Task_RejectTransfer" name="Reject - Insufficient Funds">
+      <bpmn:incoming>Flow_08_reject</bpmn:incoming>
+      <bpmn:outgoing>Flow_09_reject</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_Rejected" name="Transfer Rejected">
+      <bpmn:incoming>Flow_09_reject</bpmn:incoming>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_02" messageRef="Message_TransferRejected" />
+    </bpmn:endEvent>
+
+    <!-- Create Hold -->
+    <bpmn:serviceTask id="Task_CreateHold" name="Create Hold">
+      <bpmn:incoming>Flow_08_hold</bpmn:incoming>
+      <bpmn:outgoing>Flow_09_hold</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Transfer Held Event -->
+    <bpmn:intermediateThrowEvent id="Event_TransferHeld" name="Publish transfer.held">
+      <bpmn:incoming>Flow_09_hold</bpmn:incoming>
+      <bpmn:outgoing>Flow_10</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_03" messageRef="Message_TransferHeld" />
+    </bpmn:intermediateThrowEvent>
+
+    <!-- STEP 4: CREDIT WORKER -->
+    <bpmn:serviceTask id="Task_CreditWorker" name="STEP 4: CREDIT WORKER - Add Funds"
+                      camunda:class="paymentapp.payment.worker.CreditWorker">
+      <bpmn:incoming>Flow_10</bpmn:incoming>
+      <bpmn:outgoing>Flow_11</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Account Validation Gateway -->
+    <bpmn:exclusiveGateway id="Gateway_AccountValid" name="Account Valid?">
+      <bpmn:incoming>Flow_11</bpmn:incoming>
+      <bpmn:outgoing>Flow_12_invalid</bpmn:outgoing>
+      <bpmn:outgoing>Flow_12_valid</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <!-- Invalid Account Path -->
+    <bpmn:serviceTask id="Task_RejectAccount" name="Reject - Invalid Account">
+      <bpmn:incoming>Flow_12_invalid</bpmn:incoming>
+      <bpmn:outgoing>Flow_13_invalid</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_InvalidAccount" name="Invalid Account">
+      <bpmn:incoming>Flow_13_invalid</bpmn:incoming>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_04" messageRef="Message_TransferRejected" />
+    </bpmn:endEvent>
+
+    <!-- Post Credit -->
+    <bpmn:serviceTask id="Task_PostCredit" name="Post Credit to Destination">
+      <bpmn:incoming>Flow_12_valid</bpmn:incoming>
+      <bpmn:outgoing>Flow_13_credit</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Transfer Credited Event -->
+    <bpmn:intermediateThrowEvent id="Event_TransferCredited" name="Publish transfer.credited">
+      <bpmn:incoming>Flow_13_credit</bpmn:incoming>
+      <bpmn:outgoing>Flow_14</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_05" messageRef="Message_TransferCredited" />
+    </bpmn:intermediateThrowEvent>
+
+    <!-- STEP 5: COMMIT WORKER -->
+    <bpmn:serviceTask id="Task_CommitWorker" name="STEP 5: COMMIT WORKER - Finalize Transaction"
+                      camunda:class="paymentapp.payment.worker.CommitWorker">
+      <bpmn:incoming>Flow_14</bpmn:incoming>
+      <bpmn:outgoing>Flow_15</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Parallel Gateway for Debit and Release -->
+    <bpmn:parallelGateway id="Gateway_ParallelStart">
+      <bpmn:incoming>Flow_15</bpmn:incoming>
+      <bpmn:outgoing>Flow_16_debit</bpmn:outgoing>
+      <bpmn:outgoing>Flow_16_release</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <!-- Post Debit -->
+    <bpmn:serviceTask id="Task_PostDebit" name="Post Debit to Source">
+      <bpmn:incoming>Flow_16_debit</bpmn:incoming>
+      <bpmn:outgoing>Flow_17_debit</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Release Hold -->
+    <bpmn:serviceTask id="Task_ReleaseHold" name="Release Hold from Source">
+      <bpmn:incoming>Flow_16_release</bpmn:incoming>
+      <bpmn:outgoing>Flow_17_release</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Join Parallel Gateway -->
+    <bpmn:parallelGateway id="Gateway_ParallelJoin">
+      <bpmn:incoming>Flow_17_debit</bpmn:incoming>
+      <bpmn:incoming>Flow_17_release</bpmn:incoming>
+      <bpmn:outgoing>Flow_18</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <!-- Transfer Committed Event -->
+    <bpmn:intermediateThrowEvent id="Event_TransferCommitted" name="Publish transfer.committed">
+      <bpmn:incoming>Flow_18</bpmn:incoming>
+      <bpmn:outgoing>Flow_19</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_06" messageRef="Message_TransferCommitted" />
+    </bpmn:intermediateThrowEvent>
+
+    <!-- STEP 6: BALANCE PROJECTOR -->
+    <bpmn:serviceTask id="Task_BalanceProjector" name="STEP 6: BALANCE PROJECTOR - Update Balances"
+                      camunda:class="paymentapp.payment.worker.BalanceProjector">
+      <bpmn:incoming>Flow_19</bpmn:incoming>
+      <bpmn:outgoing>Flow_20</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- SSE Notification -->
+    <bpmn:serviceTask id="Task_SSENotifier" name="Send Real-time Notification"
+                      camunda:class="paymentapp.payment.service.NotificationService">
+      <bpmn:incoming>Flow_20</bpmn:incoming>
+      <bpmn:outgoing>Flow_21</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <!-- Success End Event -->
+    <bpmn:endEvent id="EndEvent_Success" name="Transfer Completed Successfully">
+      <bpmn:incoming>Flow_21</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Sequence Flows -->
+    <bpmn:sequenceFlow id="Flow_01" sourceRef="StartEvent_1" targetRef="Task_Ingress" />
+    <bpmn:sequenceFlow id="Flow_02" sourceRef="Task_Ingress" targetRef="Gateway_Idempotency" />
+    <bpmn:sequenceFlow id="Flow_03_duplicate" name="Duplicate" sourceRef="Gateway_Idempotency" targetRef="EndEvent_Duplicate">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${idempotencyExists == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_03_new" name="New Request" sourceRef="Gateway_Idempotency" targetRef="Task_StoreTransaction">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${idempotencyExists == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_04" sourceRef="Task_StoreTransaction" targetRef="Task_OutboxRelay" />
+    <bpmn:sequenceFlow id="Flow_05" sourceRef="Task_OutboxRelay" targetRef="Event_PublishKafka" />
+    <bpmn:sequenceFlow id="Flow_06" sourceRef="Event_PublishKafka" targetRef="Task_HoldWorker" />
+    <bpmn:sequenceFlow id="Flow_07" sourceRef="Task_HoldWorker" targetRef="Gateway_SufficientFunds" />
+    <bpmn:sequenceFlow id="Flow_08_reject" name="No" sourceRef="Gateway_SufficientFunds" targetRef="Task_RejectTransfer">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${sufficientFunds == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_08_hold" name="Yes" sourceRef="Gateway_SufficientFunds" targetRef="Task_CreateHold">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${sufficientFunds == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_09_reject" sourceRef="Task_RejectTransfer" targetRef="EndEvent_Rejected" />
+    <bpmn:sequenceFlow id="Flow_09_hold" sourceRef="Task_CreateHold" targetRef="Event_TransferHeld" />
+    <bpmn:sequenceFlow id="Flow_10" sourceRef="Event_TransferHeld" targetRef="Task_CreditWorker" />
+    <bpmn:sequenceFlow id="Flow_11" sourceRef="Task_CreditWorker" targetRef="Gateway_AccountValid" />
+    <bpmn:sequenceFlow id="Flow_12_invalid" name="No" sourceRef="Gateway_AccountValid" targetRef="Task_RejectAccount">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${accountValid == false}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_12_valid" name="Yes" sourceRef="Gateway_AccountValid" targetRef="Task_PostCredit">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${accountValid == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_13_invalid" sourceRef="Task_RejectAccount" targetRef="EndEvent_InvalidAccount" />
+    <bpmn:sequenceFlow id="Flow_13_credit" sourceRef="Task_PostCredit" targetRef="Event_TransferCredited" />
+    <bpmn:sequenceFlow id="Flow_14" sourceRef="Event_TransferCredited" targetRef="Task_CommitWorker" />
+    <bpmn:sequenceFlow id="Flow_15" sourceRef="Task_CommitWorker" targetRef="Gateway_ParallelStart" />
+    <bpmn:sequenceFlow id="Flow_16_debit" sourceRef="Gateway_ParallelStart" targetRef="Task_PostDebit" />
+    <bpmn:sequenceFlow id="Flow_16_release" sourceRef="Gateway_ParallelStart" targetRef="Task_ReleaseHold" />
+    <bpmn:sequenceFlow id="Flow_17_debit" sourceRef="Task_PostDebit" targetRef="Gateway_ParallelJoin" />
+    <bpmn:sequenceFlow id="Flow_17_release" sourceRef="Task_ReleaseHold" targetRef="Gateway_ParallelJoin" />
+    <bpmn:sequenceFlow id="Flow_18" sourceRef="Gateway_ParallelJoin" targetRef="Event_TransferCommitted" />
+    <bpmn:sequenceFlow id="Flow_19" sourceRef="Event_TransferCommitted" targetRef="Task_BalanceProjector" />
+    <bpmn:sequenceFlow id="Flow_20" sourceRef="Task_BalanceProjector" targetRef="Task_SSENotifier" />
+    <bpmn:sequenceFlow id="Flow_21" sourceRef="Task_SSENotifier" targetRef="EndEvent_Success" />
+
+  </bpmn:process>
+
+  <!-- Reconciler Process (Separate Process) -->
+  <bpmn:process id="ReconcilerProcess" name="Reconciler Process" isExecutable="true">
+
+    <bpmn:startEvent id="StartEvent_Timer" name="STEP 7: Scheduled Reconciliation">
+      <bpmn:outgoing>Flow_R01</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerEventDefinition_1">
+        <bpmn:timeCycle xsi:type="bpmn:tFormalExpression">R/PT30S</bpmn:timeCycle>
+      </bpmn:timerEventDefinition>
+    </bpmn:startEvent>
+
+    <bpmn:serviceTask id="Task_FindOrphans" name="Find Orphaned Holds"
+                      camunda:class="paymentapp.payment.service.ReconcilerService">
+      <bpmn:incoming>Flow_R01</bpmn:incoming>
+      <bpmn:outgoing>Flow_R02</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:exclusiveGateway id="Gateway_OrphansFound" name="Orphans Found?">
+      <bpmn:incoming>Flow_R02</bpmn:incoming>
+      <bpmn:outgoing>Flow_R03_no</bpmn:outgoing>
+      <bpmn:outgoing>Flow_R03_yes</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:endEvent id="EndEvent_NoAction" name="No Action Required">
+      <bpmn:incoming>Flow_R03_no</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:serviceTask id="Task_ReleaseOrphans" name="Release Orphaned Holds"
+                      camunda:class="paymentapp.payment.service.ReconcilerService">
+      <bpmn:incoming>Flow_R03_yes</bpmn:incoming>
+      <bpmn:outgoing>Flow_R04</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndEvent_ReconcilerComplete" name="Reconciliation Complete">
+      <bpmn:incoming>Flow_R04</bpmn:incoming>
+      <bpmn:messageEventDefinition id="MessageEventDefinition_07" messageRef="Message_TransferCancelled" />
+    </bpmn:endEvent>
+
+    <!-- Reconciler Sequence Flows -->
+    <bpmn:sequenceFlow id="Flow_R01" sourceRef="StartEvent_Timer" targetRef="Task_FindOrphans" />
+    <bpmn:sequenceFlow id="Flow_R02" sourceRef="Task_FindOrphans" targetRef="Gateway_OrphansFound" />
+    <bpmn:sequenceFlow id="Flow_R03_no" name="No" sourceRef="Gateway_OrphansFound" targetRef="EndEvent_NoAction">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${orphanedHolds.isEmpty()}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_R03_yes" name="Yes" sourceRef="Gateway_OrphansFound" targetRef="Task_ReleaseOrphans">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${!orphanedHolds.isEmpty()}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_R04" sourceRef="Task_ReleaseOrphans" targetRef="EndEvent_ReconcilerComplete" />
+
+  </bpmn:process>
+
+  <!-- Message Definitions -->
+  <bpmn:message id="Message_TransferRequested" name="transfer.requested" />
+  <bpmn:message id="Message_TransferHeld" name="transfer.held" />
+  <bpmn:message id="Message_TransferCredited" name="transfer.credited" />
+  <bpmn:message id="Message_TransferCommitted" name="transfer.committed" />
+  <bpmn:message id="Message_TransferRejected" name="transfer.rejected" />
+  <bpmn:message id="Message_TransferCancelled" name="transfer.cancelled" />
+
+  <!-- Error Definitions -->
+  <bpmn:error id="Error_InsufficientFunds" name="InsufficientFunds" errorCode="INSUFFICIENT_FUNDS" />
+  <bpmn:error id="Error_InvalidAccount" name="InvalidAccount" errorCode="INVALID_ACCOUNT" />
+
+</bpmn:definitions>
